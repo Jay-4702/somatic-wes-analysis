@@ -1,0 +1,11 @@
+# Ignore heavy data, reference, and alignment directories
+align/
+calls/
+fastq/
+logs/
+ref/
+tmp/
+
+# Ignore intermediate VCFs in the annotation folder
+annot/*.vcf
+annot/*.vcf.gz
