@@ -1,57 +1,69 @@
-# Storage-Optimized Somatic WES Pipeline (SWES)
+# Storage-Optimized Somatic Whole Exome Sequencing Pipeline (SWES)
 
-An end-to-end, reproducible pipeline for Somatic Whole Exome Sequencing (WES) variant calling and functional annotation, engineered specifically for resource-constrained local environments (WSL2/Windows). 
+A modular, reproducible bioinformatics pipeline for matched tumor-normal whole-exome sequencing (WES), somatic variant calling, functional annotation, and exploratory pathway analysis, designed for resource-constrained local environments using Ubuntu on Windows Subsystem for Linux 2 (WSL2).
 
-This project processes paired Tumor/Normal exome data (HCC1395 breast cancer cell line) to identify somatic mutations, annotate their clinical impact, and perform pathway enrichment analysis.
+**Author:** Jaydeep Desai  
+**Project type:** Cancer genomics · Bioinformatics · Pipeline engineering  
+**Primary variant caller:** GATK4 Mutect2  
+**Annotation:** Ensembl Variant Effect Predictor (VEP) REST API  
+**Downstream analysis:** Python, Jupyter Notebook, and Enrichr  
 
-## 🧬 Pipeline Architecture & Engineering Highlights
+**Scope and interpretation:** The documented Mutect2 analysis was restricted to chromosomes 6 and 17. The reported output contained 272 variants classified as PASS. These results must not be interpreted as a complete exome-wide variant catalogue. The reference genome assembly, upstream alignment implementation, and several quality-control details remain to be verified.
 
-Running clinical genomics pipelines on standard hardware usually results in disk space exhaustion and memory crashes. This pipeline circumvents those limitations using advanced data engineering patterns:
+## 1. Project Overview
 
-1. **Zero-Intermediate Alignment Streaming**
-   Instead of writing massive intermediate SAM and BAM files to disk, this pipeline streams `bwa mem` directly into `samtools fixmate`, `sort`, and `markdup` via Unix pipes. This reduces the disk I/O footprint by **>70%**.
-   
-2. **API Fault Tolerance & Resiliency**
-   Functional annotation is handled via a custom Python client querying the Ensembl VEP REST API. To combat frequent 500/503 server overloads on public endpoints, the client implements an exponential backoff/retry loop with a graceful offline `.csv` fallback, ensuring the pipeline never crashes mid-run.
+Somatic mutations contribute to cancer development, progression, and variation in cellular behavior. Whole-exome sequencing provides a way to investigate genetic alterations within protein-coding regions of the genome. Comparing tumor DNA with matched normal DNA helps distinguish candidate somatic alterations from variants also present in the normal sample.
 
-3. **Strict Environment Isolation**
-   Dependency conflicts are resolved using isolated Conda environments (`swes-core`, `swes-gatk`, `swes-py`). 
+The Storage-Optimized Somatic WES Pipeline (SWES) implements a computational workflow for processing matched tumor-normal sequencing data from the HCC1395 breast cancer cell-line system.
 
-4. **Idempotency & State Checkpointing**
-   Every bash script evaluates the output state before execution. If a step is interrupted due to power loss or hardware limits, the pipeline safely resumes exactly where it left off without overwriting existing progress or re-running expensive compute steps.
+The pipeline combines sequence-processing tools, somatic variant calling, functional annotation, and exploratory biological analysis. Its engineering design addresses practical constraints encountered when running genomics software on a local Windows computer through WSL2, including storage consumption, software dependency conflicts, interrupted execution, and unreliable external API services.
 
----
+The project has two complementary objectives:
+1. Biological analysis: Identify candidate somatic single-nucleotide variants (SNVs) and insertions/deletions (indels), annotate their potential functional consequences, and explore their distribution across genes and biological pathways.
+2. Pipeline engineering: Organize the analysis into modular scripts, isolate software dependencies, reduce unnecessary intermediate files where supported by the implementation, and improve recovery from failed or interrupted steps.
 
-## ⚙️ Workflow Breakdown
+The current implementation should be regarded as a research and exploratory analysis workflow. It is not a clinically validated diagnostic pipeline.
 
-The pipeline is modularized into discrete Bash execution steps:
+## 2. Scientific Background and Motivation
 
-- **`01_setup_and_slice.sh`**: Data ingestion, reference genome indexing, and slicing panel of normals (PoN) to target chromosomes (chr6 & chr17) to fit local memory constraints.
-- **`02_setup_environments.sh`**: Resolves and builds Conda environments.
-- **`03_align_and_preprocess.sh`**: Streamed BWA-MEM alignment, duplicate marking, and GATK Base Quality Score Recalibration (BQSR).
-- **`04_somatic_variant_calling.sh`**: Tumor-normal matched calling using **GATK4 Mutect2** with local de novo assembly for high-confidence SNVs and Indels. *(Note: Strelka2 execution was bypassed to accommodate WSL2 C++ binary compatibility limits).*
-- **`05_annotate_variants.sh`**: Native Linux `zcat | awk` extraction of `PASS` variants, followed by fault-tolerant functional annotation via the Ensembl VEP REST API.
+### 2.1 Why matched tumor-normal sequencing?
+Tumor samples contain a mixture of genetic alterations, including potentially acquired somatic mutations and inherited germline variants. Analyzing tumor sequencing data alongside a matched normal sample provides additional evidence for distinguishing these categories.
 
----
+The pipeline uses GATK4 Mutect2 for tumor-normal variant calling. Mutect2 evaluates sequencing evidence to identify candidate somatic variants, including SNVs and indels.
 
-## 📊 Exploratory Data Analysis & Biological Interpretation
+However, matched-normal calling does not eliminate all false positives. Sequencing artifacts, contamination, low coverage, mapping errors, sample mismatches, and other technical issues can still affect the results. Appropriate filtering, quality control, and validation remain essential.
 
-The pipeline concludes with a Python-based Jupyter Notebook (`notebooks/06_Exploratory_Analysis.ipynb`) that extracts biological meaning from the variant calls using `pandas`, `matplotlib`, and `seaborn`.
+### 2.2 Why optimize for local computing?
+Whole-exome sequencing workflows can create large alignment files and require substantial memory, storage, and computational time. On resource-constrained systems, unnecessary intermediate files and poorly managed dependencies can prevent an otherwise valid workflow from completing.
 
-**Key Visualizations Include:**
-* **Variant Consequences**: Distribution of functional impacts (missense, frameshift, synonymous, etc.).
-* **Clinical Impact Severity**: Profiling the percentage of HIGH, MODERATE, and LOW impact mutations.
-* **Cancer Driver Identification**: Bar charts of the top 10 most frequently mutated genes in the HCC1395 cell line.
-* **KEGG Pathway Enrichment**: Integration with the **Enrichr REST API** to map mutated genes to biological pathways (e.g., p53 signaling, PI3K-Akt) using standardized `-log10(P-value)` transformations.
+SWES addresses these practical issues through a modular Bash-based architecture, isolated Conda environments, resource-specific reference preparation, and an annotation client designed to tolerate transient API failures.
 
----
+### 2.3 Project objectives
+The main objectives are to:
+- Process matched tumor-normal sequencing data.
+- Prepare reference resources for somatic variant calling.
+- Align sequencing reads and process alignment files.
+- Identify candidate somatic variants using Mutect2.
+- Annotate variant consequences through Ensembl VEP.
+- Summarize variant consequences and predicted impact categories.
+- Explore frequently mutated genes and pathway enrichment.
+- Improve operational reliability on a local WSL2 environment.
+- Maintain a reproducible record of tools, inputs, outputs, and limitations.
 
-## 🛠️ Tech Stack
+## 3. Pipeline Architecture
 
-* **Bioinformatics Tools**: GATK4, BWA, Samtools, Picard
-* **Data Engineering**: Bash scripting, Unix pipes, Conda
-* **Data Science**: Python 3.11, Pandas, Matplotlib, Seaborn, Jupyter
-* **Cloud / APIs**: Ensembl VEP REST API, Enrichr API
+The documented workflow is organized into modular execution stages.
 
----
-*Developed by Jaydeep Desai*
+```mermaid
+flowchart TD
+    A[Matched tumor-normal FASTQ data] --> B[Reference and resource preparation]
+    B --> C[Conda environment setup]
+    C --> D[Read alignment and preprocessing]
+    D --> E[Mutect2 somatic variant calling]
+    E --> F[VCF filtering and PASS extraction]
+    F --> G[Ensembl VEP REST API annotation]
+    G --> H[Annotated variant data]
+    H --> I[Jupyter Notebook exploratory analysis]
+    I --> J[Variant consequence summaries]
+    I --> K[Gene-level exploration]
+    I --> L[Enrichr pathway enrichment]
